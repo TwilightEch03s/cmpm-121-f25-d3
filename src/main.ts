@@ -15,7 +15,6 @@ document.body.append(mapDiv);
 
 const statusPanelDiv = document.createElement("div");
 statusPanelDiv.id = "statusPanel";
-statusPanelDiv.innerText = "Zero tokens Implemented";
 document.body.append(statusPanelDiv);
 
 // Pinpoint classroom location
