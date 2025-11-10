@@ -15,6 +15,7 @@ document.body.append(mapDiv);
 
 const statusPanelDiv = document.createElement("div");
 statusPanelDiv.id = "statusPanel";
+statusPanelDiv.innerText = "No Cell Selected!";
 document.body.append(statusPanelDiv);
 
 // Pinpoint classroom location
@@ -34,6 +35,7 @@ let previousCell: {
   j: number;
   value: number;
   rect: leaflet.Rectangle;
+  label: leaflet.Marker;
 } | null = null;
 
 // Create the map
@@ -68,8 +70,9 @@ playerRangeCircle.addTo(map);
 
 // Cell cache/data
 const cellCache: Record<string, number> = {};
+const cellLabels: Record<string, leaflet.Marker> = {};
 
-// Helper functions that are called repeatedly
+// Helper functions
 function isTooFar(distance: number) {
   return distance > COLLECTION_RADIUS;
 }
@@ -80,6 +83,7 @@ function displayDistanceStatus(message: string) {
 
 function setCell(i: number, j: number, value: number) {
   cellCache[`${i},${j}`] = value;
+  updateCellLabel(i, j, value);
 }
 
 function updateRectStyle(
@@ -90,6 +94,38 @@ function updateRectStyle(
   rect.setStyle({ fillColor, color: fillColor, fillOpacity: opacity });
 }
 
+// Update or create a label showing the value on the map
+function updateCellLabel(i: number, j: number, value: number) {
+  const origin = CLASSROOM_LATLNG;
+  const key = `${i},${j}`;
+  const lat = origin.lat + (i + 0.5) * TILE_DEGREES;
+  const lng = origin.lng + (j + 0.5) * TILE_DEGREES;
+
+  const existingLabel = cellLabels[key];
+  if (existingLabel) {
+    existingLabel.setIcon(
+      leaflet.divIcon({
+        className: "cell-label",
+        html: value > 0
+          ? `<div style="font-size:12px;font-weight:bold;color:black;">${value}</div>`
+          : "",
+      }),
+    );
+  } else {
+    const label = leaflet.marker([lat, lng], {
+      icon: leaflet.divIcon({
+        className: "cell-label",
+        html: value > 0
+          ? `<div style="font-size:12px;font-weight:bold;color:black;">${value}</div>`
+          : "",
+      }),
+      interactive: false,
+    });
+    label.addTo(map);
+    cellLabels[key] = label;
+  }
+}
+
 // Collect tokens function
 function collectToken(
   i: number,
@@ -97,6 +133,7 @@ function collectToken(
   rect: leaflet.Rectangle,
   value: number,
   distance: number,
+  label: leaflet.Marker,
 ) {
   if (isTooFar(distance)) {
     displayDistanceStatus(`Too far! (${Math.round(distance)}m)`);
@@ -105,18 +142,17 @@ function collectToken(
 
   // If already holding a token, return previous into its original cell
   if (playerToken !== null && previousCell) {
-    const { i: pi, j: pj, rect: prevRect, value: prevValue } = previousCell;
+    const { i: pi, j: pj, rect: prevRect, value: prevValue, label: prevLabel } =
+      previousCell;
     setCell(pi, pj, prevValue);
     updateRectStyle(prevRect, "gold", 0.6);
-    prevRect.bindPopup(() => makePopup(pi, pj, prevRect, prevValue));
+    prevRect.bindPopup(() => makePopup(pi, pj, prevRect, prevValue, prevLabel));
   }
 
   // Collect the new token
   playerToken = value;
-  previousCell = { i, j, rect, value };
-  displayDistanceStatus(
-    `Holding: Cell [${i}, ${j}] → Value: ${playerToken}`,
-  );
+  previousCell = { i, j, rect, value, label };
+  displayDistanceStatus(`Holding: Cell [${i}, ${j}] → Value: ${playerToken}`);
 
   // Remove token visually
   setCell(i, j, 0);
@@ -131,6 +167,7 @@ function doubleToken(
   rect: leaflet.Rectangle,
   value: number,
   distance: number,
+  label: leaflet.Marker,
 ) {
   if (isTooFar(distance)) {
     displayDistanceStatus(`Too far! (${Math.round(distance)}m)`);
@@ -141,7 +178,7 @@ function doubleToken(
   setCell(i, j, newValue);
   updateRectStyle(rect, "orange", 0.7);
   rect.unbindPopup();
-  rect.bindPopup(() => makePopup(i, j, rect, newValue));
+  rect.bindPopup(() => makePopup(i, j, rect, newValue, label));
 
   playerToken = null;
   previousCell = null;
@@ -155,6 +192,7 @@ function makePopup(
   j: number,
   rect: leaflet.Rectangle,
   value: number,
+  label: leaflet.Marker,
 ) {
   const popupDiv = document.createElement("div");
   popupDiv.innerHTML = `
@@ -183,11 +221,11 @@ function makePopup(
   }
 
   collectButton.addEventListener("click", () => {
-    collectToken(i, j, rect, value, distance);
+    collectToken(i, j, rect, value, distance, label);
   });
 
   doubleButton.addEventListener("click", () => {
-    doubleToken(i, j, rect, value, distance);
+    doubleToken(i, j, rect, value, distance, label);
   });
 
   return popupDiv;
@@ -205,17 +243,16 @@ function spawnCache(i: number, j: number) {
 
   // Generate token value
   let value = Math.floor(luck(`${i},${j}`) * 10);
-  if (value == 3) {
-    value = 0;
-  }
-  setCell(i, j, value);
+  if (value === 3) value = 0;
 
   let fillColor = "white";
   let fillOpacity = 0.4;
 
+  // Only gold tiles get label, popup, and highlighted style
   if (value >= 1 && value <= 4) {
     fillColor = "gold";
     fillOpacity = 0.6;
+    setCell(i, j, value);
   }
 
   // Create the rectangle and add to map
@@ -226,7 +263,8 @@ function spawnCache(i: number, j: number) {
   }).addTo(map);
 
   if (value >= 1 && value <= 4) {
-    rect.bindPopup(() => makePopup(i, j, rect, value));
+    const label = cellLabels[`${i},${j}`];
+    rect.bindPopup(() => makePopup(i, j, rect, value, label));
   }
 }
 
