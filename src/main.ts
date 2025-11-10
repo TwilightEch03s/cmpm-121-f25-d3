@@ -69,6 +69,27 @@ playerRangeCircle.addTo(map);
 // Cell cache/data
 const cellCache: Record<string, number> = {};
 
+// Helper functions that are called repeatedly
+function isTooFar(distance: number) {
+  return distance > COLLECTION_RADIUS;
+}
+
+function displayDistanceStatus(message: string) {
+  statusPanelDiv.innerText = message;
+}
+
+function setCell(i: number, j: number, value: number) {
+  cellCache[`${i},${j}`] = value;
+}
+
+function updateRectStyle(
+  rect: leaflet.Rectangle,
+  fillColor: string,
+  opacity: number,
+) {
+  rect.setStyle({ fillColor, color: fillColor, fillOpacity: opacity });
+}
+
 // Collect tokens function
 function collectToken(
   i: number,
@@ -77,36 +98,33 @@ function collectToken(
   value: number,
   distance: number,
 ) {
-  if (distance > COLLECTION_RADIUS) {
-    statusPanelDiv.innerText = `Too far! (${Math.round(distance)}m)`;
+  if (isTooFar(distance)) {
+    displayDistanceStatus(`Too far! (${Math.round(distance)}m)`);
     return;
   }
 
   // If already holding a token, return previous into its original cell
   if (playerToken !== null && previousCell) {
     const { i: pi, j: pj, rect: prevRect, value: prevValue } = previousCell;
-    cellCache[`${pi},${pj}`] = prevValue;
-    prevRect.setStyle({
-      fillColor: "gold",
-      color: "gold",
-      fillOpacity: 0.6,
-    });
+    setCell(pi, pj, prevValue);
+    updateRectStyle(prevRect, "gold", 0.6);
     prevRect.bindPopup(() => makePopup(pi, pj, prevRect, prevValue));
   }
 
   // Collect the new token
   playerToken = value;
   previousCell = { i, j, rect, value };
-  statusPanelDiv.innerText =
-    `Holding: Cell [${i}, ${j}] → Value: ${playerToken}`;
+  displayDistanceStatus(
+    `Holding: Cell [${i}, ${j}] → Value: ${playerToken}`,
+  );
 
   // Remove token visually
-  cellCache[`${i},${j}`] = 0;
-  rect.setStyle({ fillColor: "white", color: "white", fillOpacity: 0.2 });
+  setCell(i, j, 0);
+  updateRectStyle(rect, "white", 0.2);
   rect.unbindPopup();
 }
 
-// Doubling token funciton
+// Doubling token function
 function doubleToken(
   i: number,
   j: number,
@@ -114,21 +132,21 @@ function doubleToken(
   value: number,
   distance: number,
 ) {
-  if (distance > COLLECTION_RADIUS) {
-    statusPanelDiv.innerText = `Too far! (${Math.round(distance)}m)`;
+  if (isTooFar(distance)) {
+    displayDistanceStatus(`Too far! (${Math.round(distance)}m)`);
     return;
   }
 
   const newValue = value * 2;
-  cellCache[`${i},${j}`] = newValue;
-  rect.setStyle({ fillColor: "orange", color: "orange", fillOpacity: 0.7 });
+  setCell(i, j, newValue);
+  updateRectStyle(rect, "orange", 0.7);
   rect.unbindPopup();
   rect.bindPopup(() => makePopup(i, j, rect, newValue));
 
   playerToken = null;
   previousCell = null;
 
-  statusPanelDiv.innerText = `Double: Cell [${i}, ${j}] → Value: ${newValue}`;
+  displayDistanceStatus(`Double: Cell [${i}, ${j}] → Value: ${newValue}`);
 }
 
 // Popup Function
@@ -150,22 +168,18 @@ function makePopup(
   const cellCenter = rect.getBounds().getCenter();
   const distance = map.distance(playerMarker.getLatLng(), cellCenter);
 
-  // Disable collect if too far
-  if (distance > COLLECTION_RADIUS) {
+  // Disable button parameters
+  if (isTooFar(distance)) {
     collectButton.disabled = true;
     collectButton.innerText = `Too Far! (${Math.round(distance)}m)`;
-  }
-
-  // Disable double if can't double
-  if (distance > COLLECTION_RADIUS) {
     doubleButton.disabled = true;
     doubleButton.innerText = `Too Far! (${Math.round(distance)}m)`;
-  } else if (playerToken === null) {
+  } else if (playerToken == null) {
     doubleButton.disabled = true;
     doubleButton.innerText = "No Token to Double!";
   } else if (playerToken !== value) {
     doubleButton.disabled = true;
-    doubleButton.innerText = `Invalid Double, Need:(${playerToken})`;
+    doubleButton.innerText = `Invalid Double!`;
   }
 
   collectButton.addEventListener("click", () => {
@@ -191,8 +205,10 @@ function spawnCache(i: number, j: number) {
 
   // Generate token value
   let value = Math.floor(luck(`${i},${j}`) * 10);
-  if (value === 3) value = 0;
-  cellCache[`${i},${j}`] = value;
+  if (value == 3) {
+    value = 0;
+  }
+  setCell(i, j, value);
 
   let fillColor = "white";
   let fillOpacity = 0.4;
