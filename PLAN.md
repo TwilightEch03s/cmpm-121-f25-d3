@@ -29,4 +29,6 @@ Key gameplay challenge: Can players collect and craft tokens from nearby locatio
 - [x] give cells cache using luck() and when clicked anywhere on the map, it displays it
 - [x] collect: player can collect tokens from nearby cells, removing them from the cell’s cache
 - [x] double: let the player craft two identical tokens to create one token of double the value
+- [x] add in labels to track what cell is what value
+- [x] refactor code so no repeated functions are used
 - ...
