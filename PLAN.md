@@ -36,5 +36,5 @@ Key gameplay challenge: Can players collect and craft tokens from nearby locatio
 - [x] implement spawn and despawn cells so the player can infinitly encounter the the entire grid
 - [x] add a score threshold that the player must reach, once reach tell the player they won!
 - [x] add player movement UI
-- [ ] clean up and refactor before finishing d3.b
+- [x] clean up and refactor before finishing d3.b
 - ...

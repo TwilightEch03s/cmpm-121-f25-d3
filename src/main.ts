@@ -4,6 +4,69 @@ import "./_leafletWorkaround.ts";
 import luck from "./_luck.ts";
 import "./style.css";
 
+// Constants
+const GAMEPLAY_ZOOM_LEVEL = 19;
+const TILE_DEGREES = 1e-4;
+const COLLECTION_RADIUS = 50; // In meters
+const WORLD_LATLNG = leaflet.latLng(0, 0); // Center of the world
+const VALUE_THRESHOLD = 2048;
+
+// Player states
+let latitude = WORLD_LATLNG.lat;
+let longitude = WORLD_LATLNG.lng;
+let highestValue = 0;
+let movingNorth = false;
+let movingSouth = false;
+let movingEast = false;
+let movingWest = false;
+const step = TILE_DEGREES * 1;
+let playerToken: number | null = null;
+let previousCell: {
+  i: number;
+  j: number;
+  value: number;
+  rect: leaflet.Rectangle;
+  label: leaflet.Marker;
+} | null = null;
+
+//
+// Helper/Utility functions
+//
+
+// Check if distance is too far
+function isTooFar(distance: number) {
+  return distance > COLLECTION_RADIUS;
+}
+
+// Display distance status
+function displayDistanceStatus(message: string) {
+  statusPanelDiv.innerText = message;
+}
+
+// Set cell value in cache and update label
+function setCell(i: number, j: number, value: number) {
+  cellCache[`${i},${j}`] = value;
+  updateCellLabel(i, j, value);
+  updateHighestValue(value);
+}
+
+// Update rectangle style
+function updateRectStyle(
+  rect: leaflet.Rectangle,
+  fillColor: string,
+  opacity: number,
+) {
+  rect.setStyle({ fillColor, color: fillColor, fillOpacity: opacity });
+}
+
+// Convert lag/lng to cell indices
+function conversion(lat: number, lng: number) {
+  const origin = WORLD_LATLNG;
+  const i = Math.floor((lat - origin.lat) / TILE_DEGREES);
+  const j = Math.floor((lng - origin.lng) / TILE_DEGREES);
+  return { i, j };
+}
+
 // Create basic UI elements
 const controlPanelDiv = document.createElement("div");
 controlPanelDiv.id = "controlPanel";
@@ -23,28 +86,9 @@ highScoreDiv.id = "highScorePanel";
 highScoreDiv.innerText = "Highest Value: 0";
 document.body.insertBefore(highScoreDiv, statusPanelDiv);
 
-// Pinpoint location
-const WOLRD_LATLNG = leaflet.latLng(
-  0,
-  0,
-);
-
-// Gameplay parameters
-const GAMEPLAY_ZOOM_LEVEL = 19;
-const TILE_DEGREES = 1e-4;
-const COLLECTION_RADIUS = 50; // meters
-let playerToken: number | null = null;
-let previousCell: {
-  i: number;
-  j: number;
-  value: number;
-  rect: leaflet.Rectangle;
-  label: leaflet.Marker;
-} | null = null;
-
 // Create the map
 const map = leaflet.map(mapDiv, {
-  center: WOLRD_LATLNG,
+  center: WORLD_LATLNG,
   zoom: GAMEPLAY_ZOOM_LEVEL,
   scrollWheelZoom: false,
 });
@@ -55,106 +99,18 @@ leaflet
     maxZoom: 19,
     attribution:
       '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  })
-  .addTo(map);
+  }).addTo(map);
 
+//
 // Player
+//
 // Add a marker to represent the player
-const playerMarker = leaflet.marker(WOLRD_LATLNG);
+const playerMarker = leaflet.marker(WORLD_LATLNG);
 playerMarker.bindTooltip("Your Location!");
 playerMarker.addTo(map);
 
-// Player Movement
-let latitude = WOLRD_LATLNG.lat;
-let longitude = WOLRD_LATLNG.lng;
-const step = TILE_DEGREES * 1;
-
-// Arrow control container
-const arrowContainer = document.createElement("div");
-arrowContainer.id = "arrowControls";
-document.body.append(arrowContainer);
-
-const directions = [
-  {
-    key: "up",
-    label: "↑",
-    move: () => {
-      latitude += step;
-    },
-  },
-  {
-    key: "down",
-    label: "↓",
-    move: () => {
-      latitude -= step;
-    },
-  },
-  {
-    key: "left",
-    label: "←",
-    move: () => {
-      longitude -= step;
-    },
-  },
-  {
-    key: "right",
-    label: "→",
-    move: () => {
-      longitude += step;
-    },
-  },
-];
-
-directions.forEach((dir) => {
-  const btn = document.createElement("button");
-  btn.innerText = dir.label;
-  btn.id = dir.key;
-  btn.addEventListener("click", () => movePlayer(dir.move));
-  arrowContainer.appendChild(btn);
-});
-
-// Move player function
-function movePlayer(moveFn: () => void) {
-  moveFn();
-  const newPos = leaflet.latLng(latitude, longitude);
-  playerMarker.setLatLng(newPos);
-  playerRangeCircle.setLatLng(newPos);
-  map.panTo(newPos);
-  updateVisibleCells();
-}
-
-document.addEventListener("keydown", (event) => {
-  const key = event.key.toLowerCase();
-  let moved = false;
-
-  if (key == "w") {
-    // North
-    latitude += step;
-    moved = true;
-  } else if (key == "s") {
-    // South
-    latitude -= step;
-    moved = true;
-  } else if (key == "a") {
-    // West
-    longitude -= step;
-    moved = true;
-  } else if (key == "d") {
-    // East
-    longitude += step;
-    moved = true;
-  }
-
-  if (moved) {
-    const newPos = leaflet.latLng(latitude, longitude);
-    playerMarker.setLatLng(newPos);
-    playerRangeCircle.setLatLng(newPos);
-    map.panTo(newPos);
-  }
-});
-
 // Draw a circle showing the player's range
-const playerRangeCircle = leaflet.circle(WOLRD_LATLNG, {
+const playerRangeCircle = leaflet.circle(WORLD_LATLNG, {
   radius: COLLECTION_RADIUS,
   color: "blue",
   fillColor: "blue",
@@ -162,12 +118,122 @@ const playerRangeCircle = leaflet.circle(WOLRD_LATLNG, {
 });
 playerRangeCircle.addTo(map);
 
+// Arrow controls container
+const arrowContainer = document.createElement("div");
+arrowContainer.id = "arrowControls";
+document.body.append(arrowContainer);
+
+// Central movement function using booleans
+function movePlayerByDirection() {
+  if (movingNorth) {
+    latitude += step;
+  }
+  if (movingSouth) {
+    latitude -= step;
+  }
+  if (movingEast) {
+    longitude += step;
+  }
+  if (movingWest) {
+    longitude -= step;
+  }
+
+  const newPos = leaflet.latLng(latitude, longitude);
+  playerMarker.setLatLng(newPos);
+  playerRangeCircle.setLatLng(newPos);
+  map.panTo(newPos);
+  updateVisibleCells();
+}
+
+// Arrow buttons
+const directions = [
+  { key: "up", label: "↑" },
+  { key: "down", label: "↓" },
+  { key: "left", label: "←" },
+  { key: "right", label: "→" },
+];
+
+directions.forEach((dir) => {
+  const btn = document.createElement("button");
+  btn.innerText = dir.label;
+  btn.id = dir.key;
+
+  // Mouse down = start moving
+  btn.addEventListener("mousedown", () => {
+    if (dir.key === "up") {
+      movingNorth = true;
+    }
+    if (dir.key === "down") {
+      movingSouth = true;
+    }
+    if (dir.key === "left") {
+      movingWest = true;
+    }
+    if (dir.key === "right") {
+      movingEast = true;
+    }
+
+    movePlayerByDirection();
+  });
+
+  // Mouse up = stop moving
+  btn.addEventListener("mouseup", () => {
+    if (dir.key === "up") {
+      movingNorth = false;
+    }
+    if (dir.key === "down") {
+      movingSouth = false;
+    }
+    if (dir.key === "left") {
+      movingWest = false;
+    }
+    if (dir.key === "right") {
+      movingEast = false;
+    }
+  });
+
+  arrowContainer.appendChild(btn);
+});
+
+// Keyboard controls
+document.addEventListener("keydown", (event) => {
+  const key = event.key.toLowerCase();
+  if (key === "w" || key === "arrowup") {
+    movingNorth = true;
+  }
+  if (key === "s" || key === "arrowdown") {
+    movingSouth = true;
+  }
+  if (key === "a" || key === "arrowleft") {
+    movingWest = true;
+  }
+  if (key === "d" || key === "arrowright") {
+    movingEast = true;
+  }
+
+  movePlayerByDirection();
+});
+
+document.addEventListener("keyup", (event) => {
+  const key = event.key.toLowerCase();
+  if (key === "w" || key === "arrowup") {
+    movingNorth = false;
+  }
+  if (key === "s" || key === "arrowdown") {
+    movingSouth = false;
+  }
+  if (key === "a" || key === "arrowleft") {
+    movingWest = false;
+  }
+  if (key === "d" || key === "arrowright") {
+    movingEast = false;
+  }
+});
+
 // Cell cache/data
 const cellCache: Record<string, number> = {};
 const cellLabels: Record<string, leaflet.Marker> = {};
 const cellGroup = leaflet.featureGroup().addTo(map);
-let highestValue = 0;
-const VALUE_THRESHOLD = 2048;
 
 // Update highest value
 function updateHighestValue(newValue: number) {
@@ -176,40 +242,14 @@ function updateHighestValue(newValue: number) {
     highScoreDiv.innerText = `Highest Value: ${highestValue}`;
 
     if (highestValue >= VALUE_THRESHOLD) {
-      displayDistanceStatus(
-        `🏆 2048 reached! ${highestValue} ≥ ${VALUE_THRESHOLD}`,
-      );
       alert("🏆 Congratulations!");
     }
   }
 }
 
-// Helper functions
-function isTooFar(distance: number) {
-  return distance > COLLECTION_RADIUS;
-}
-
-function displayDistanceStatus(message: string) {
-  statusPanelDiv.innerText = message;
-}
-
-function setCell(i: number, j: number, value: number) {
-  cellCache[`${i},${j}`] = value;
-  updateCellLabel(i, j, value);
-  updateHighestValue(value);
-}
-
-function updateRectStyle(
-  rect: leaflet.Rectangle,
-  fillColor: string,
-  opacity: number,
-) {
-  rect.setStyle({ fillColor, color: fillColor, fillOpacity: opacity });
-}
-
 // Update or create a label showing the value on the map
 function updateCellLabel(i: number, j: number, value: number) {
-  const origin = WOLRD_LATLNG;
+  const origin = WORLD_LATLNG;
   const key = `${i},${j}`;
   const lat = origin.lat + (i + 0.5) * TILE_DEGREES;
   const lng = origin.lng + (j + 0.5) * TILE_DEGREES;
@@ -346,7 +386,7 @@ function makePopup(
 
 // Function to spawn one rectangle (cache)
 function spawnCache(i: number, j: number) {
-  const origin = WOLRD_LATLNG;
+  const origin = WORLD_LATLNG;
 
   // Calculate rectangle corners
   const bounds = leaflet.latLngBounds([
@@ -401,14 +441,6 @@ function updateVisibleCells() {
       spawnCache(i, j);
     }
   }
-}
-
-// Convert lag/lng to cell indices
-function conversion(lat: number, lng: number) {
-  const origin = WOLRD_LATLNG;
-  const i = Math.floor((lat - origin.lat) / TILE_DEGREES);
-  const j = Math.floor((lng - origin.lng) / TILE_DEGREES);
-  return { i, j };
 }
 
 // Show visable cells
