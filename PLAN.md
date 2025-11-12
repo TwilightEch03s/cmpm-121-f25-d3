@@ -1,16 +1,16 @@
 # D3: {game title goes here}
 
-# Game Design Vision
+## Game Design Vision
 
 {a few-sentence description of the game mechanics}
 
-# Technologies
+## Technologies
 
 - TypeScript for most game code, little to no explicit HTML, and all CSS collected in common `style.css` file
 - Deno and Vite for building
 - GitHub Actions + GitHub Pages for deployment automation
 
-# Assignments
+## Assignments
 
 ## D3.a: Core mechanics (token collection and crafting)
 
@@ -33,6 +33,8 @@ Key gameplay challenge: Can players collect and craft tokens from nearby locatio
 - [x] refactor code so no repeated functions are used
 - [x] set anchor point for the map at (0,0)
 - [x] make player move using a top-down movement system
-- [ ] implement spawn and despawn cells so the player can infinitly encounter the the entire grid
+- [x] implement spawn and despawn cells so the player can infinitly encounter the the entire grid
+- [x] add a score threshold that the player must reach, once reach tell the player they won!
+- [x] add player movement UI
 - [ ] clean up and refactor before finishing d3.b
 - ...
