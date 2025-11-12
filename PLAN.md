@@ -31,4 +31,8 @@ Key gameplay challenge: Can players collect and craft tokens from nearby locatio
 - [x] double: let the player craft two identical tokens to create one token of double the value
 - [x] add in labels to track what cell is what value
 - [x] refactor code so no repeated functions are used
+- [x] set anchor point for the map at (0,0)
+- [x] make player move using a top-down movement system
+- [ ] implement spawn and despawn cells so the player can infinitly encounter the the entire grid
+- [ ] clean up and refactor before finishing d3.b
 - ...

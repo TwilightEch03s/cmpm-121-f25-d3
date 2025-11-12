@@ -18,10 +18,10 @@ statusPanelDiv.id = "statusPanel";
 statusPanelDiv.innerText = "No Cell Selected!";
 document.body.append(statusPanelDiv);
 
-// Pinpoint classroom location
-const CLASSROOM_LATLNG = leaflet.latLng(
-  36.997936938057016,
-  -122.05703507501151,
+// Pinpoint location
+const WOLRD_LATLNG = leaflet.latLng(
+  0,
+  0,
 );
 
 // Gameplay parameters
@@ -40,7 +40,7 @@ let previousCell: {
 
 // Create the map
 const map = leaflet.map(mapDiv, {
-  center: CLASSROOM_LATLNG,
+  center: WOLRD_LATLNG,
   zoom: GAMEPLAY_ZOOM_LEVEL,
   scrollWheelZoom: false,
 });
@@ -54,13 +54,49 @@ leaflet
   })
   .addTo(map);
 
+// Player
 // Add a marker to represent the player
-const playerMarker = leaflet.marker(CLASSROOM_LATLNG);
+const playerMarker = leaflet.marker(WOLRD_LATLNG);
 playerMarker.bindTooltip("Your Location!");
 playerMarker.addTo(map);
 
+// Player Movement
+let latitude = WOLRD_LATLNG.lat;
+let longitude = WOLRD_LATLNG.lng;
+const step = TILE_DEGREES * 1;
+
+document.addEventListener("keydown", (event) => {
+  const key = event.key.toLowerCase();
+  let moved = false;
+
+  if (key == "w") {
+    // North
+    latitude += step;
+    moved = true;
+  } else if (key == "s") {
+    // South
+    latitude -= step;
+    moved = true;
+  } else if (key == "a") {
+    // West
+    longitude -= step;
+    moved = true;
+  } else if (key == "d") {
+    // East
+    longitude += step;
+    moved = true;
+  }
+
+  if (moved) {
+    const newPos = leaflet.latLng(latitude, longitude);
+    playerMarker.setLatLng(newPos);
+    playerRangeCircle.setLatLng(newPos);
+    map.panTo(newPos);
+  }
+});
+
 // Draw a circle showing the player's range
-const playerRangeCircle = leaflet.circle(CLASSROOM_LATLNG, {
+const playerRangeCircle = leaflet.circle(WOLRD_LATLNG, {
   radius: COLLECTION_RADIUS,
   color: "blue",
   fillColor: "blue",
@@ -96,7 +132,7 @@ function updateRectStyle(
 
 // Update or create a label showing the value on the map
 function updateCellLabel(i: number, j: number, value: number) {
-  const origin = CLASSROOM_LATLNG;
+  const origin = WOLRD_LATLNG;
   const key = `${i},${j}`;
   const lat = origin.lat + (i + 0.5) * TILE_DEGREES;
   const lng = origin.lng + (j + 0.5) * TILE_DEGREES;
@@ -233,7 +269,7 @@ function makePopup(
 
 // Function to spawn one rectangle (cache)
 function spawnCache(i: number, j: number) {
-  const origin = CLASSROOM_LATLNG;
+  const origin = WOLRD_LATLNG;
 
   // Calculate rectangle corners
   const bounds = leaflet.latLngBounds([
