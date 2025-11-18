@@ -14,6 +14,12 @@ interface CellData {
   label: leaflet.Marker;
 }
 
+// Cell values
+interface CellValue {
+  hasToken: boolean;
+  tokenValue: number | null;
+}
+
 const grid: Map<string, CellData> = new Map();
 const cellRects: Map<string, leaflet.Rectangle> = new Map();
 const cellLabelsMap: Map<string, leaflet.Marker> = new Map();
@@ -270,10 +276,14 @@ function collectToken(
   const cell = grid.get(key);
   if (!cell || !cell.hasToken) return;
 
+  // Save before modifying
+  modifiedCells.save(key, cell);
+
   // Return previous token
   if (playerToken !== null && previousCell) {
     const prevKey = `${previousCell.i},${previousCell.j}`;
     const prevCell = grid.get(prevKey)!;
+    modifiedCells.save(prevKey, prevCell);
     prevCell.hasToken = true;
     prevCell.tokenValue = previousCell.tokenValue;
     updateRectStyle(prevCell.rect, "gold", 0.6);
@@ -310,7 +320,7 @@ function doubleToken(
   const key = `${i},${j}`;
   const cell = grid.get(key);
   if (!cell || cell.tokenValue === null) return;
-
+  modifiedCells.save(key, cell);
   const newValue = cell.tokenValue * 2;
   cell.tokenValue = newValue;
   setCell(i, j, newValue);
@@ -371,22 +381,69 @@ function makePopup(
   return popupDiv;
 }
 
+// Memento stores only the mutable gameplay state
+class CellMemento {
+  hasToken: boolean;
+  tokenValue: number | null;
+
+  constructor(cell: CellData) {
+    this.hasToken = cell.hasToken;
+    this.tokenValue = cell.tokenValue;
+  }
+}
+
+// Caretaker for modified cells
+class ModifiedCells {
+  private mementos: Map<string, CellMemento> = new Map();
+
+  save(cellID: string, cell: CellData) {
+    this.mementos.set(cellID, new CellMemento(cell));
+  }
+
+  restore(cellID: string): CellValue | null {
+    const memento = this.mementos.get(cellID);
+    if (!memento) return null;
+    return {
+      hasToken: memento.hasToken,
+      tokenValue: memento.tokenValue,
+    };
+  }
+}
+
+const modifiedCells = new ModifiedCells();
+
 // Function to spawn one rectangle (cache)
 // Flywheel-style spawnCache
 function spawnCache(i: number, j: number) {
   const key = `${i},${j}`;
   const origin = WORLD_LATLNG;
 
-  // If the cell already exists, just update its visual
+  // Declare only once
+  let value: number;
+  let hasToken: boolean;
+
+  // If cell exists
   if (grid.has(key)) {
     const cell = grid.get(key)!;
     const rect = cellRects.get(key)!;
     const label = cellLabelsMap.get(key)!;
-    const value = cell.tokenValue ?? 0;
+    value = cell.tokenValue ?? 0; // assign, not declare
+    hasToken = value > 0;
     setCell(i, j, value);
-    updateRectStyle(rect, value > 0 ? "gold" : "white", value > 0 ? 0.6 : 0.2);
+    updateRectStyle(rect, hasToken ? "gold" : "white", hasToken ? 0.6 : 0.2);
     rect.bindPopup(() => makePopup(i, j, rect, value, label));
     return;
+  }
+
+  // Check if we have a saved memento
+  const saved = modifiedCells.restore(key);
+  if (saved) {
+    hasToken = saved.hasToken;
+    value = saved.tokenValue ?? 0;
+  } else {
+    value = Math.floor(luck(`${i},${j}`) * 10);
+    if (value === 3) value = 0;
+    hasToken = value >= 1 && value <= 4;
   }
 
   // Calculate rectangle corners
@@ -395,24 +452,16 @@ function spawnCache(i: number, j: number) {
     [origin.lat + (i + 1) * TILE_DEGREES, origin.lng + (j + 1) * TILE_DEGREES],
   ]);
 
-  // Generate token value
-  let value = Math.floor(luck(`${i},${j}`) * 10);
-  if (value === 3) value = 0;
-
-  const hasToken = value >= 1 && value <= 4;
-
   // Rectangle style
   const fillColor = hasToken ? "gold" : "white";
   const fillOpacity = hasToken ? 0.6 : 0.2;
 
-  // Create rectangle
+  // Create rectangle and label
   const rect = leaflet.rectangle(bounds, {
     color: fillColor,
     fillColor,
     fillOpacity,
   }).addTo(cellGroup);
-
-  // Create label
   const label = leaflet.marker(bounds.getCenter(), {
     icon: leaflet.divIcon({
       className: "cell-label",
@@ -463,6 +512,7 @@ function updateVisibleCells() {
   for (const key of grid.keys()) {
     if (!visibleCells.has(key)) {
       const cell = grid.get(key)!;
+      modifiedCells.save(key, cell);
       map.removeLayer(cell.rect);
       map.removeLayer(cell.label);
       cellRects.delete(key);

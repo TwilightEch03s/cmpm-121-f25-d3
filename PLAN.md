@@ -38,5 +38,5 @@ Key gameplay challenge: Can players collect and craft tokens from nearby locatio
 - [x] add player movement UI
 - [x] clean up and refactor before finishing d3.b
 - [x] apply flyweight pattern to save memory of the cells
-- [ ] apply memento pattern to perserve the satate of the cells
+- [x] apply memento pattern to perserve the state of the cells
 - [ ] clean and refactor
