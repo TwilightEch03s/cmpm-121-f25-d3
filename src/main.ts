@@ -8,10 +8,15 @@ import "./style.css";
 interface CellData {
   i: number;
   j: number;
-  value: number;
+  hasToken: boolean;
+  tokenValue: number | null;
   rect: leaflet.Rectangle;
   label: leaflet.Marker;
 }
+
+const grid: Map<string, CellData> = new Map();
+const cellRects: Map<string, leaflet.Rectangle> = new Map();
+const cellLabelsMap: Map<string, leaflet.Marker> = new Map();
 
 // Constants
 const GAMEPLAY_ZOOM_LEVEL = 19;
@@ -30,14 +35,11 @@ let movingEast = false;
 let movingWest = false;
 const step = TILE_DEGREES * 1;
 let playerToken: number | null = null;
-
-// UPDATED TYPE ✔️
 let previousCell: CellData | null = null;
 
 //
 // Helper/Utility functions
 //
-
 // Check if distance is too far
 function isTooFar(distance: number) {
   return distance > COLLECTION_RADIUS;
@@ -222,33 +224,39 @@ function updateHighestValue(newValue: number) {
 
 // Update or create a label showing the value on the map
 function updateCellLabel(i: number, j: number, value: number) {
-  const origin = WORLD_LATLNG;
   const key = `${i},${j}`;
-  const lat = origin.lat + (i + 0.5) * TILE_DEGREES;
-  const lng = origin.lng + (j + 0.5) * TILE_DEGREES;
-
   const existingLabel = cellLabels[key];
-  if (existingLabel) {
-    existingLabel.setIcon(
-      leaflet.divIcon({
-        className: "cell-label",
-        html: value > 0
-          ? `<div style="font-size:12px;font-weight:bold;color:black;">${value}</div>`
-          : "",
-      }),
-    );
+
+  if (value > 0) {
+    const origin = WORLD_LATLNG;
+    const lat = origin.lat + (i + 0.5) * TILE_DEGREES;
+    const lng = origin.lng + (j + 0.5) * TILE_DEGREES;
+
+    if (existingLabel) {
+      existingLabel.setIcon(
+        leaflet.divIcon({
+          className: "cell-label",
+          html:
+            `<div style="font-size:12px;font-weight:bold;color:black;">${value}</div>`,
+        }),
+      );
+    } else {
+      const label = leaflet.marker([lat, lng], {
+        icon: leaflet.divIcon({
+          className: "cell-label",
+          html:
+            `<div style="font-size:12px;font-weight:bold;color:black;">${value}</div>`,
+        }),
+        interactive: false,
+      }).addTo(cellGroup);
+      cellLabels[key] = label;
+    }
   } else {
-    const label = leaflet.marker([lat, lng], {
-      icon: leaflet.divIcon({
-        className: "cell-label",
-        html: value > 0
-          ? `<div style="font-size:12px;font-weight:bold;color:black;">${value}</div>`
-          : "",
-      }),
-      interactive: false,
-    });
-    label.addTo(cellGroup);
-    cellLabels[key] = label;
+    // Remove the label completely if value is 0
+    if (existingLabel) {
+      map.removeLayer(existingLabel);
+      delete cellLabels[key];
+    }
   }
 }
 
@@ -257,33 +265,39 @@ function collectToken(
   i: number,
   j: number,
   rect: leaflet.Rectangle,
-  value: number,
-  distance: number,
-  label: leaflet.Marker,
 ) {
-  if (isTooFar(distance)) {
-    displayDistanceStatus(`Too far! (${Math.round(distance)}m)`);
-    return;
-  }
+  const key = `${i},${j}`;
+  const cell = grid.get(key);
+  if (!cell || !cell.hasToken) return;
 
-  // If already holding a token, return previous into its original cell
+  // Return previous token
   if (playerToken !== null && previousCell) {
-    const { i: pi, j: pj, rect: prevRect, value: prevValue, label: prevLabel } =
-      previousCell;
-    setCell(pi, pj, prevValue);
-    updateRectStyle(prevRect, "gold", 0.6);
-    prevRect.bindPopup(() => makePopup(pi, pj, prevRect, prevValue, prevLabel));
+    const prevKey = `${previousCell.i},${previousCell.j}`;
+    const prevCell = grid.get(prevKey)!;
+    prevCell.hasToken = true;
+    prevCell.tokenValue = previousCell.tokenValue;
+    updateRectStyle(prevCell.rect, "gold", 0.6);
+    prevCell.rect.bindPopup(() =>
+      makePopup(
+        prevCell.i,
+        prevCell.j,
+        prevCell.rect,
+        prevCell.tokenValue!,
+        prevCell.label,
+      )
+    );
   }
 
-  // Collect the new token
-  playerToken = value;
-  previousCell = { i, j, value, rect, label };
+  // Pick up new token
+  playerToken = cell.tokenValue;
+  previousCell = { ...cell };
   displayDistanceStatus(`Holding: Cell [${i}, ${j}] → Value: ${playerToken}`);
 
-  // Remove token visually
+  cell.hasToken = false;
+  cell.tokenValue = null;
+
   setCell(i, j, 0);
   updateRectStyle(rect, "white", 0.2);
-  rect.unbindPopup();
 }
 
 // Doubling token function
@@ -291,18 +305,18 @@ function doubleToken(
   i: number,
   j: number,
   rect: leaflet.Rectangle,
-  value: number,
-  distance: number,
   label: leaflet.Marker,
 ) {
-  if (isTooFar(distance)) {
-    displayDistanceStatus(`Too far! (${Math.round(distance)}m)`);
-    return;
-  }
+  const key = `${i},${j}`;
+  const cell = grid.get(key);
+  if (!cell || cell.tokenValue === null) return;
 
-  const newValue = value * 2;
+  const newValue = cell.tokenValue * 2;
+  cell.tokenValue = newValue;
   setCell(i, j, newValue);
   updateRectStyle(rect, "orange", 0.7);
+
+  // Re-bind popup
   rect.unbindPopup();
   rect.bindPopup(() => makePopup(i, j, rect, newValue, label));
 
@@ -322,10 +336,10 @@ function makePopup(
 ) {
   const popupDiv = document.createElement("div");
   popupDiv.innerHTML = `
-    <div>Cell [${i}, ${j}] has token value: <span id="value">${value}</span></div>
-    <button id="collect">Collect</button>
-    <button id="double">Double</button>
-  `;
+   <div>Cell [${i}, ${j}] has token value: <span id="value">${value}</span></div>
+   <button id="collect">Collect</button>
+   <button id="double">Double</button>
+ `;
 
   const collectButton = popupDiv.querySelector<HTMLButtonElement>("#collect")!;
   const doubleButton = popupDiv.querySelector<HTMLButtonElement>("#double")!;
@@ -347,19 +361,33 @@ function makePopup(
   }
 
   collectButton.addEventListener("click", () => {
-    collectToken(i, j, rect, value, distance, label);
+    collectToken(i, j, rect);
   });
 
   doubleButton.addEventListener("click", () => {
-    doubleToken(i, j, rect, value, distance, label);
+    doubleToken(i, j, rect, label);
   });
 
   return popupDiv;
 }
 
 // Function to spawn one rectangle (cache)
+// Flywheel-style spawnCache
 function spawnCache(i: number, j: number) {
+  const key = `${i},${j}`;
   const origin = WORLD_LATLNG;
+
+  // If the cell already exists, just update its visual
+  if (grid.has(key)) {
+    const cell = grid.get(key)!;
+    const rect = cellRects.get(key)!;
+    const label = cellLabelsMap.get(key)!;
+    const value = cell.tokenValue ?? 0;
+    setCell(i, j, value);
+    updateRectStyle(rect, value > 0 ? "gold" : "white", value > 0 ? 0.6 : 0.2);
+    rect.bindPopup(() => makePopup(i, j, rect, value, label));
+    return;
+  }
 
   // Calculate rectangle corners
   const bounds = leaflet.latLngBounds([
@@ -371,54 +399,75 @@ function spawnCache(i: number, j: number) {
   let value = Math.floor(luck(`${i},${j}`) * 10);
   if (value === 3) value = 0;
 
-  let fillColor = "white";
-  let fillOpacity = 0.4;
+  const hasToken = value >= 1 && value <= 4;
 
-  // Only gold tiles get label, popup, and highlighted style
-  if (value >= 1 && value <= 4) {
-    fillColor = "gold";
-    fillOpacity = 0.6;
-    setCell(i, j, value);
-  }
+  // Rectangle style
+  const fillColor = hasToken ? "gold" : "white";
+  const fillOpacity = hasToken ? 0.6 : 0.2;
 
-  // Create the rectangle and add to map
+  // Create rectangle
   const rect = leaflet.rectangle(bounds, {
     color: fillColor,
     fillColor,
     fillOpacity,
   }).addTo(cellGroup);
 
-  if (value >= 1 && value <= 4) {
-    const label = cellLabels[`${i},${j}`];
+  // Create label
+  const label = leaflet.marker(bounds.getCenter(), {
+    icon: leaflet.divIcon({
+      className: "cell-label",
+      html: hasToken
+        ? `<div style="font-size:12px;font-weight:bold;color:black;">${value}</div>`
+        : "",
+    }),
+    interactive: false,
+  }).addTo(cellGroup);
+
+  // Save to flywheel maps
+  grid.set(key, {
+    i,
+    j,
+    hasToken,
+    tokenValue: hasToken ? value : null,
+    rect,
+    label,
+  });
+  cellRects.set(key, rect);
+  cellLabelsMap.set(key, label);
+
+  // Bind popup only if cell has a token
+  if (hasToken) {
     rect.bindPopup(() => makePopup(i, j, rect, value, label));
   }
 }
 
-// Update visible cells on the map
+// Show visible cells
 function updateVisibleCells() {
   const bounds = map.getBounds();
   const sw = bounds.getSouthWest();
   const ne = bounds.getNorthEast();
-
   const { i: iMin, j: jMin } = conversion(sw.lat, sw.lng);
   const { i: iMax, j: jMax } = conversion(ne.lat, ne.lng);
 
-  // Clear all old cells and labels
-  cellGroup.clearLayers();
-  Object.keys(cellCache).forEach((k) => delete cellCache[k]);
-  Object.keys(cellLabels).forEach((k) => delete cellLabels[k]);
+  const visibleCells = new Set<string>();
 
-  // Rebuild only visible cells
   for (let i = iMin; i <= iMax; i++) {
     for (let j = jMin; j <= jMax; j++) {
+      const key = `${i},${j}`;
+      visibleCells.add(key);
       spawnCache(i, j);
     }
   }
-}
 
-// Show visible cells
-updateVisibleCells();
-map.on("moveend", updateVisibleCells);
-document.addEventListener("keydown", () => {
-  updateVisibleCells();
-});
+  // Remove cells that are no longer visible
+  for (const key of grid.keys()) {
+    if (!visibleCells.has(key)) {
+      const cell = grid.get(key)!;
+      map.removeLayer(cell.rect);
+      map.removeLayer(cell.label);
+      cellRects.delete(key);
+      cellLabelsMap.delete(key);
+      grid.delete(key);
+    }
+  }
+}
