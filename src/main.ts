@@ -138,23 +138,16 @@ document.body.append(arrowContainer);
 
 // Central movement function using booleans
 function movePlayerByDirection() {
-  if (movingNorth) {
-    latitude += step;
-  }
-  if (movingSouth) {
-    latitude -= step;
-  }
-  if (movingEast) {
-    longitude += step;
-  }
-  if (movingWest) {
-    longitude -= step;
-  }
+  if (movingNorth) latitude += step;
+  if (movingSouth) latitude -= step;
+  if (movingEast) longitude += step;
+  if (movingWest) longitude -= step;
 
   const newPos = leaflet.latLng(latitude, longitude);
   playerMarker.setLatLng(newPos);
   playerRangeCircle.setLatLng(newPos);
   map.panTo(newPos);
+
   updateVisibleCells();
 }
 
@@ -213,7 +206,6 @@ document.addEventListener("keyup", (event) => {
 
 // Cell cache/data
 const cellCache: Record<string, number> = {};
-const cellLabels: Record<string, leaflet.Marker> = {};
 const cellGroup = leaflet.featureGroup().addTo(map);
 
 // Update highest value
@@ -231,7 +223,7 @@ function updateHighestValue(newValue: number) {
 // Update or create a label showing the value on the map
 function updateCellLabel(i: number, j: number, value: number) {
   const key = `${i},${j}`;
-  const existingLabel = cellLabels[key];
+  const existingLabel = cellLabelsMap.get(key);
 
   if (value > 0) {
     const origin = WORLD_LATLNG;
@@ -255,13 +247,12 @@ function updateCellLabel(i: number, j: number, value: number) {
         }),
         interactive: false,
       }).addTo(cellGroup);
-      cellLabels[key] = label;
+      cellLabelsMap.set(key, label);
     }
   } else {
-    // Remove the label completely if value is 0
     if (existingLabel) {
       map.removeLayer(existingLabel);
-      delete cellLabels[key];
+      cellLabelsMap.delete(key);
     }
   }
 }
@@ -276,17 +267,19 @@ function collectToken(
   const cell = grid.get(key);
   if (!cell || !cell.hasToken) return;
 
-  // Save before modifying
   modifiedCells.save(key, cell);
 
-  // Return previous token
   if (playerToken !== null && previousCell) {
     const prevKey = `${previousCell.i},${previousCell.j}`;
     const prevCell = grid.get(prevKey)!;
     modifiedCells.save(prevKey, prevCell);
+
     prevCell.hasToken = true;
     prevCell.tokenValue = previousCell.tokenValue;
+
     updateRectStyle(prevCell.rect, "gold", 0.6);
+    updateCellLabel(prevCell.i, prevCell.j, prevCell.tokenValue!);
+
     prevCell.rect.bindPopup(() =>
       makePopup(
         prevCell.i,
@@ -298,7 +291,6 @@ function collectToken(
     );
   }
 
-  // Pick up new token
   playerToken = cell.tokenValue;
   previousCell = { ...cell };
   displayDistanceStatus(`Holding: Cell [${i}, ${j}] → Value: ${playerToken}`);
@@ -326,7 +318,6 @@ function doubleToken(
   setCell(i, j, newValue);
   updateRectStyle(rect, "orange", 0.7);
 
-  // Re-bind popup
   rect.unbindPopup();
   rect.bindPopup(() => makePopup(i, j, rect, newValue, label));
 
@@ -356,7 +347,6 @@ function makePopup(
   const cellCenter = rect.getBounds().getCenter();
   const distance = map.distance(playerMarker.getLatLng(), cellCenter);
 
-  // Disable button parameters
   if (isTooFar(distance)) {
     collectButton.disabled = true;
     collectButton.innerText = `Too Far! (${Math.round(distance)}m)`;
@@ -413,29 +403,27 @@ class ModifiedCells {
 const modifiedCells = new ModifiedCells();
 
 // Function to spawn one rectangle (cache)
-// Flywheel-style spawnCache
 function spawnCache(i: number, j: number) {
   const key = `${i},${j}`;
   const origin = WORLD_LATLNG;
 
-  // Declare only once
   let value: number;
   let hasToken: boolean;
 
-  // If cell exists
   if (grid.has(key)) {
     const cell = grid.get(key)!;
-    const rect = cellRects.get(key)!;
-    const label = cellLabelsMap.get(key)!;
-    value = cell.tokenValue ?? 0; // assign, not declare
+    value = cell.tokenValue ?? 0;
     hasToken = value > 0;
     setCell(i, j, value);
-    updateRectStyle(rect, hasToken ? "gold" : "white", hasToken ? 0.6 : 0.2);
-    rect.bindPopup(() => makePopup(i, j, rect, value, label));
+    updateRectStyle(
+      cell.rect,
+      hasToken ? "gold" : "white",
+      hasToken ? 0.6 : 0.2,
+    );
+    cell.rect.bindPopup(() => makePopup(i, j, cell.rect, value, cell.label));
     return;
   }
 
-  // Check if we have a saved memento
   const saved = modifiedCells.restore(key);
   if (saved) {
     hasToken = saved.hasToken;
@@ -446,22 +434,17 @@ function spawnCache(i: number, j: number) {
     hasToken = value >= 1 && value <= 4;
   }
 
-  // Calculate rectangle corners
   const bounds = leaflet.latLngBounds([
     [origin.lat + i * TILE_DEGREES, origin.lng + j * TILE_DEGREES],
     [origin.lat + (i + 1) * TILE_DEGREES, origin.lng + (j + 1) * TILE_DEGREES],
   ]);
 
-  // Rectangle style
-  const fillColor = hasToken ? "gold" : "white";
-  const fillOpacity = hasToken ? 0.6 : 0.2;
-
-  // Create rectangle and label
   const rect = leaflet.rectangle(bounds, {
-    color: fillColor,
-    fillColor,
-    fillOpacity,
+    color: hasToken ? "gold" : "white",
+    fillColor: hasToken ? "gold" : "white",
+    fillOpacity: hasToken ? 0.6 : 0.2,
   }).addTo(cellGroup);
+
   const label = leaflet.marker(bounds.getCenter(), {
     icon: leaflet.divIcon({
       className: "cell-label",
@@ -472,7 +455,6 @@ function spawnCache(i: number, j: number) {
     interactive: false,
   }).addTo(cellGroup);
 
-  // Save to flywheel maps
   grid.set(key, {
     i,
     j,
@@ -484,7 +466,6 @@ function spawnCache(i: number, j: number) {
   cellRects.set(key, rect);
   cellLabelsMap.set(key, label);
 
-  // Bind popup only if cell has a token
   if (hasToken) {
     rect.bindPopup(() => makePopup(i, j, rect, value, label));
   }
@@ -508,8 +489,7 @@ function updateVisibleCells() {
     }
   }
 
-  // Remove cells that are no longer visible
-  for (const key of grid.keys()) {
+  for (const key of Array.from(grid.keys())) {
     if (!visibleCells.has(key)) {
       const cell = grid.get(key)!;
       modifiedCells.save(key, cell);
@@ -521,3 +501,13 @@ function updateVisibleCells() {
     }
   }
 }
+
+// Initial spawn
+map.whenReady(() => {
+  updateVisibleCells();
+});
+
+// Update on move or zoom
+map.on("moveend zoomend", () => {
+  updateVisibleCells();
+});
