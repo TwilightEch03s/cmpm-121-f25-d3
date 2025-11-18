@@ -4,6 +4,15 @@ import "./_leafletWorkaround.ts";
 import luck from "./_luck.ts";
 import "./style.css";
 
+// Cell data interface
+interface CellData {
+  i: number;
+  j: number;
+  value: number;
+  rect: leaflet.Rectangle;
+  label: leaflet.Marker;
+}
+
 // Constants
 const GAMEPLAY_ZOOM_LEVEL = 19;
 const TILE_DEGREES = 1e-4;
@@ -21,13 +30,9 @@ let movingEast = false;
 let movingWest = false;
 const step = TILE_DEGREES * 1;
 let playerToken: number | null = null;
-let previousCell: {
-  i: number;
-  j: number;
-  value: number;
-  rect: leaflet.Rectangle;
-  label: leaflet.Marker;
-} | null = null;
+
+// UPDATED TYPE ✔️
+let previousCell: CellData | null = null;
 
 //
 // Helper/Utility functions
@@ -160,36 +165,20 @@ directions.forEach((dir) => {
 
   // Mouse down = start moving
   btn.addEventListener("mousedown", () => {
-    if (dir.key === "up") {
-      movingNorth = true;
-    }
-    if (dir.key === "down") {
-      movingSouth = true;
-    }
-    if (dir.key === "left") {
-      movingWest = true;
-    }
-    if (dir.key === "right") {
-      movingEast = true;
-    }
+    if (dir.key === "up") movingNorth = true;
+    if (dir.key === "down") movingSouth = true;
+    if (dir.key === "left") movingWest = true;
+    if (dir.key === "right") movingEast = true;
 
     movePlayerByDirection();
   });
 
   // Mouse up = stop moving
   btn.addEventListener("mouseup", () => {
-    if (dir.key === "up") {
-      movingNorth = false;
-    }
-    if (dir.key === "down") {
-      movingSouth = false;
-    }
-    if (dir.key === "left") {
-      movingWest = false;
-    }
-    if (dir.key === "right") {
-      movingEast = false;
-    }
+    if (dir.key === "up") movingNorth = false;
+    if (dir.key === "down") movingSouth = false;
+    if (dir.key === "left") movingWest = false;
+    if (dir.key === "right") movingEast = false;
   });
 
   arrowContainer.appendChild(btn);
@@ -198,36 +187,20 @@ directions.forEach((dir) => {
 // Keyboard controls
 document.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
-  if (key === "w" || key === "arrowup") {
-    movingNorth = true;
-  }
-  if (key === "s" || key === "arrowdown") {
-    movingSouth = true;
-  }
-  if (key === "a" || key === "arrowleft") {
-    movingWest = true;
-  }
-  if (key === "d" || key === "arrowright") {
-    movingEast = true;
-  }
+  if (key === "w" || key === "arrowup") movingNorth = true;
+  if (key === "s" || key === "arrowdown") movingSouth = true;
+  if (key === "a" || key === "arrowleft") movingWest = true;
+  if (key === "d" || key === "arrowright") movingEast = true;
 
   movePlayerByDirection();
 });
 
 document.addEventListener("keyup", (event) => {
   const key = event.key.toLowerCase();
-  if (key === "w" || key === "arrowup") {
-    movingNorth = false;
-  }
-  if (key === "s" || key === "arrowdown") {
-    movingSouth = false;
-  }
-  if (key === "a" || key === "arrowleft") {
-    movingWest = false;
-  }
-  if (key === "d" || key === "arrowright") {
-    movingEast = false;
-  }
+  if (key === "w" || key === "arrowup") movingNorth = false;
+  if (key === "s" || key === "arrowdown") movingSouth = false;
+  if (key === "a" || key === "arrowleft") movingWest = false;
+  if (key === "d" || key === "arrowright") movingEast = false;
 });
 
 // Cell cache/data
@@ -304,7 +277,7 @@ function collectToken(
 
   // Collect the new token
   playerToken = value;
-  previousCell = { i, j, rect, value, label };
+  previousCell = { i, j, value, rect, label };
   displayDistanceStatus(`Holding: Cell [${i}, ${j}] → Value: ${playerToken}`);
 
   // Remove token visually
@@ -421,7 +394,7 @@ function spawnCache(i: number, j: number) {
   }
 }
 
-// Update visable cells on the map
+// Update visible cells on the map
 function updateVisibleCells() {
   const bounds = map.getBounds();
   const sw = bounds.getSouthWest();
@@ -443,7 +416,7 @@ function updateVisibleCells() {
   }
 }
 
-// Show visable cells
+// Show visible cells
 updateVisibleCells();
 map.on("moveend", updateVisibleCells);
 document.addEventListener("keydown", () => {
