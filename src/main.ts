@@ -4,6 +4,122 @@ import "./_leafletWorkaround.ts";
 import luck from "./_luck.ts";
 import "./style.css";
 
+// Movement Facade + controller
+interface MovementController {
+  start(): void;
+  stop(): void;
+  onMove(callback: (lat: number, lng: number) => void): void;
+}
+
+// Geolocation movement controller
+class GeolocationMovementController implements MovementController {
+  private callback: ((lat: number, lng: number) => void) | null = null;
+  private watchID: number | null = null;
+
+  start() {
+    if (navigator.geolocation) {
+      this.watchID = navigator.geolocation.watchPosition(
+        (pos) => {
+          if (this.callback) {
+            this.callback(pos.coords.latitude, pos.coords.longitude);
+          }
+        },
+        (err) => console.error("Geolocation error:", err),
+        { enableHighAccuracy: true, maximumAge: 500, timeout: 5000 },
+      );
+    }
+  }
+
+  stop() {
+    if (this.watchID != null) {
+      navigator.geolocation.clearWatch(this.watchID);
+      this.watchID = null;
+    }
+  }
+
+  onMove(cb: (lat: number, lng: number) => void) {
+    this.callback = cb;
+  }
+}
+
+// Button controller
+class ButtonMovementController implements MovementController {
+  private callback: ((lat: number, lng: number) => void) | null = null;
+  private step = TILE_DEGREES;
+
+  constructor(
+    private up: HTMLElement | null,
+    private down: HTMLElement | null,
+    private left: HTMLElement | null,
+    private right: HTMLElement | null,
+  ) {}
+
+  start() {
+    if (this.up) this.up.addEventListener("click", this.moveUp);
+    if (this.down) this.down.addEventListener("click", this.moveDown);
+    if (this.left) this.left.addEventListener("click", this.moveLeft);
+    if (this.right) this.right.addEventListener("click", this.moveRight);
+  }
+
+  stop() {
+    if (this.up) this.up.removeEventListener("click", this.moveUp);
+    if (this.down) this.down.removeEventListener("click", this.moveDown);
+    if (this.left) this.left.removeEventListener("click", this.moveLeft);
+    if (this.right) this.right.removeEventListener("click", this.moveRight);
+  }
+
+  onMove(cb: (lat: number, lng: number) => void) {
+    this.callback = cb;
+  }
+
+  private apply(lat: number, lng: number) {
+    if (this.callback) this.callback(lat, lng);
+  }
+
+  private moveUp = () => this.apply(this.step, 0);
+  private moveDown = () => this.apply(-this.step, 0);
+  private moveLeft = () => this.apply(0, -this.step);
+  private moveRight = () => this.apply(0, this.step);
+}
+
+// Movement facade
+class MovementFacade {
+  private current: MovementController;
+
+  constructor(
+    private geoCtrl: MovementController,
+    private btnCtrl: MovementController,
+  ) {
+    const params = new URLSearchParams(globalThis.location.search);
+    const mode = params.get("movement");
+
+    this.current = mode === "buttons" ? btnCtrl : geoCtrl;
+  }
+
+  start() {
+    this.current.start();
+  }
+
+  switchToGeo() {
+    this.current.stop();
+    this.current = this.geoCtrl;
+    this.current.start();
+  }
+
+  switchToButtons() {
+    this.current.stop();
+    this.current = this.btnCtrl;
+    this.current.start();
+  }
+
+  onMove(cb: (lat: number, lng: number) => void) {
+    this.geoCtrl.onMove(cb);
+    this.btnCtrl.onMove((dLat, dLng) => {
+      cb(latitude + dLat, longitude + dLng);
+    });
+  }
+}
+
 // Cell data interface
 interface CellData {
   i: number;
@@ -149,6 +265,22 @@ function movePlayerByDirection() {
   map.panTo(newPos);
 
   updateVisibleCells();
+  saveGameState();
+}
+
+// Move player to specific coordinates (used by controllers)
+function movePlayer(lat: number, lng: number) {
+  latitude = lat;
+  longitude = lng;
+
+  const pos = leaflet.latLng(latitude, longitude);
+
+  playerMarker.setLatLng(pos);
+  playerRangeCircle.setLatLng(pos);
+  map.panTo(pos);
+
+  updateVisibleCells();
+  saveGameState();
 }
 
 // Arrow buttons
@@ -185,24 +317,24 @@ directions.forEach((dir) => {
   arrowContainer.appendChild(btn);
 });
 
-// Keyboard controls
-document.addEventListener("keydown", (event) => {
-  const key = event.key.toLowerCase();
-  if (key === "w" || key === "arrowup") movingNorth = true;
-  if (key === "s" || key === "arrowdown") movingSouth = true;
-  if (key === "a" || key === "arrowleft") movingWest = true;
-  if (key === "d" || key === "arrowright") movingEast = true;
+// Initialize movement controllers (buttons + geolocation) and wire to movePlayer
+const upBtn = document.getElementById("up");
+const downBtn = document.getElementById("down");
+const leftBtn = document.getElementById("left");
+const rightBtn = document.getElementById("right");
 
-  movePlayerByDirection();
-});
+const buttonCtrl = new ButtonMovementController(
+  upBtn,
+  downBtn,
+  leftBtn,
+  rightBtn,
+);
+const geoCtrl = new GeolocationMovementController();
+const movementFacade = new MovementFacade(geoCtrl, buttonCtrl);
 
-document.addEventListener("keyup", (event) => {
-  const key = event.key.toLowerCase();
-  if (key === "w" || key === "arrowup") movingNorth = false;
-  if (key === "s" || key === "arrowdown") movingSouth = false;
-  if (key === "a" || key === "arrowleft") movingWest = false;
-  if (key === "d" || key === "arrowright") movingEast = false;
-});
+// Wire movement events to update the player
+movementFacade.onMove((lat, lng) => movePlayer(lat, lng));
+movementFacade.start();
 
 // Cell cache/data
 const cellCache: Record<string, number> = {};
@@ -300,6 +432,7 @@ function collectToken(
 
   setCell(i, j, 0);
   updateRectStyle(rect, "white", 0.2);
+  saveGameState();
 }
 
 // Doubling token function
@@ -325,6 +458,7 @@ function doubleToken(
   previousCell = null;
 
   displayDistanceStatus(`Double: Cell [${i}, ${j}] → Value: ${newValue}`);
+  saveGameState();
 }
 
 // Popup Function
@@ -398,9 +532,94 @@ class ModifiedCells {
       tokenValue: memento.tokenValue,
     };
   }
+
+  // Export mementos to a JSON object for persistence
+  toJSON(): Record<string, { hasToken: boolean; tokenValue: number | null }> {
+    const out: Record<
+      string,
+      { hasToken: boolean; tokenValue: number | null }
+    > = {};
+    for (const [k, v] of this.mementos.entries()) {
+      out[k] = { hasToken: v.hasToken, tokenValue: v.tokenValue };
+    }
+    return out;
+  }
+
+  // Restore mementos from a previous JSON object
+  fromJSON(
+    obj:
+      | Record<string, { hasToken: boolean; tokenValue: number | null }>
+      | null,
+  ) {
+    this.mementos.clear();
+    if (!obj) return;
+    for (const k of Object.keys(obj)) {
+      const v = obj[k];
+      const fakeCell = {
+        i: 0,
+        j: 0,
+        hasToken: v.hasToken,
+        tokenValue: v.tokenValue,
+        rect: null as unknown as leaflet.Rectangle,
+        label: null as unknown as leaflet.Marker,
+      } as CellData;
+      this.mementos.set(k, new CellMemento(fakeCell));
+    }
+  }
 }
 
 const modifiedCells = new ModifiedCells();
+
+// Save/load minimal game state to localStorage
+const GAME_STATE_KEY = "cmpm121-game-v1";
+
+function saveGameState() {
+  try {
+    const state = {
+      latitude,
+      longitude,
+      highestValue,
+      playerToken,
+      previousCell: previousCell
+        ? {
+          i: previousCell.i,
+          j: previousCell.j,
+          tokenValue: previousCell.tokenValue,
+          hasToken: previousCell.hasToken,
+        }
+        : null,
+      modified: modifiedCells.toJSON(),
+    };
+    localStorage.setItem(GAME_STATE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.warn("Failed to save game state:", e);
+  }
+}
+
+function loadGameState() {
+  try {
+    const raw = localStorage.getItem(GAME_STATE_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    if (typeof obj.latitude === "number") latitude = obj.latitude;
+    if (typeof obj.longitude === "number") longitude = obj.longitude;
+    if (typeof obj.highestValue === "number") highestValue = obj.highestValue;
+    playerToken = obj.playerToken ?? null;
+    if (obj.previousCell) {
+      previousCell = {
+        i: obj.previousCell.i,
+        j: obj.previousCell.j,
+        hasToken: !!obj.previousCell.hasToken,
+        tokenValue: obj.previousCell.tokenValue,
+        rect: null as unknown as leaflet.Rectangle,
+        label: null as unknown as leaflet.Marker,
+      } as CellData;
+    }
+    modifiedCells.fromJSON(obj.modified ?? null);
+  } catch (e) {
+    console.warn("Failed to load game state:", e);
+  }
+}
 
 // Function to spawn one rectangle (cache)
 function spawnCache(i: number, j: number) {
@@ -504,6 +723,13 @@ function updateVisibleCells() {
 
 // Initial spawn
 map.whenReady(() => {
+  loadGameState();
+  const pos = leaflet.latLng(latitude, longitude);
+  playerMarker.setLatLng(pos);
+  playerRangeCircle.setLatLng(pos);
+  map.setView(pos, GAMEPLAY_ZOOM_LEVEL);
+  highScoreDiv.innerText = `Highest Value: ${highestValue}`;
+
   updateVisibleCells();
 });
 
