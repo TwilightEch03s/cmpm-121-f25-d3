@@ -40,3 +40,10 @@ Key gameplay challenge: Can players collect and craft tokens from nearby locatio
 - [x] apply flyweight pattern to save memory of the cells
 - [x] apply memento pattern to perserve the state of the cells
 - [x] clean and refactor
+- [ ] integrate browser gelocation API for location based movement
+- [ ] implement player movement using the Facade pattern
+- [ ] add browser localStorage APi for game state to save
+- [ ] add buton to start new game
+- add buton that switches between buttons and geolocation
+- [ ] make it work on mobile
+- [ ] clean and refactor
