@@ -43,7 +43,7 @@ Key gameplay challenge: Can players collect and craft tokens from nearby locatio
 - [x] integrate browser geolocation API for location based movement
 - [x] implement player movement using the Facade pattern
 - [x] add browser localStorage API for game state to save
-- [ ] add buton to start new game
-- [ ] add buton that switches between buttons and geolocation
-- [ ] make it work on mobile
+- [x] add buton to start new game
+- [x] add buton that switches between buttons and geolocation
+- [x] make it work on mobile
 - [ ] clean and refactor

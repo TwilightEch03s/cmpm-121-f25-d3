@@ -158,6 +158,8 @@ let movingWest = false;
 const step = TILE_DEGREES * 1;
 let playerToken: number | null = null;
 let previousCell: CellData | null = null;
+let usingGeo =
+  new URLSearchParams(globalThis.location.search).get("movement") !== "buttons";
 
 //
 // Helper/Utility functions
@@ -215,6 +217,26 @@ highScoreDiv.id = "highScorePanel";
 highScoreDiv.innerText = "Highest Value: 0";
 document.body.insertBefore(highScoreDiv, statusPanelDiv);
 
+// New Game + Swap Movement
+const controlsDiv = document.createElement("div");
+controlsDiv.id = "highScoreControls";
+controlsDiv.style.display = "inline-block";
+controlsDiv.style.marginLeft = "8px";
+
+const newGameBtn = document.createElement("button");
+newGameBtn.id = "newGameBtn";
+newGameBtn.innerText = "New Game";
+newGameBtn.title = "Start a new game (clears saved state)";
+
+const swapMovementBtn = document.createElement("button");
+swapMovementBtn.id = "swapMovementBtn";
+swapMovementBtn.innerText = "Switch Movement";
+swapMovementBtn.title = "Swap between Geolocation and Button movement";
+
+controlsDiv.appendChild(newGameBtn);
+controlsDiv.appendChild(swapMovementBtn);
+highScoreDiv.parentNode?.insertBefore(controlsDiv, statusPanelDiv);
+
 // Create the map
 const map = leaflet.map(mapDiv, {
   center: WORLD_LATLNG,
@@ -251,6 +273,7 @@ playerRangeCircle.addTo(map);
 const arrowContainer = document.createElement("div");
 arrowContainer.id = "arrowControls";
 document.body.append(arrowContainer);
+arrowContainer.style.display = usingGeo ? "none" : "block";
 
 // Central movement function using booleans
 function movePlayerByDirection() {
@@ -268,7 +291,6 @@ function movePlayerByDirection() {
   saveGameState();
 }
 
-// Move player to specific coordinates (used by controllers)
 function movePlayer(lat: number, lng: number) {
   latitude = lat;
   longitude = lng;
@@ -335,6 +357,103 @@ const movementFacade = new MovementFacade(geoCtrl, buttonCtrl);
 // Wire movement events to update the player
 movementFacade.onMove((lat, lng) => movePlayer(lat, lng));
 movementFacade.start();
+
+if (upBtn) (upBtn as HTMLButtonElement).disabled = usingGeo;
+if (downBtn) (downBtn as HTMLButtonElement).disabled = usingGeo;
+if (leftBtn) (leftBtn as HTMLButtonElement).disabled = usingGeo;
+if (rightBtn) (rightBtn as HTMLButtonElement).disabled = usingGeo;
+
+{
+  const newGame = document.getElementById("newGameBtn") as
+    | HTMLButtonElement
+    | null;
+  const swapBtn = document.getElementById("swapMovementBtn") as
+    | HTMLButtonElement
+    | null;
+
+  if (swapBtn) {
+    swapBtn.innerText = usingGeo ? "Using Geolocation" : "Using Buttons";
+  }
+
+  if (newGame) {
+    newGame.addEventListener("click", () => {
+      newGame.disabled = true;
+
+      // Clear gameplay state
+      latitude = WORLD_LATLNG.lat;
+      longitude = WORLD_LATLNG.lng;
+      highestValue = 0;
+      playerToken = null;
+      previousCell = null;
+
+      // Clear modified cells and visible caches
+      modifiedCells.fromJSON(null);
+      for (const key of Array.from(grid.keys())) {
+        const c = grid.get(key)!;
+        map.removeLayer(c.rect);
+        map.removeLayer(c.label);
+      }
+      grid.clear();
+      cellRects.clear();
+      cellLabelsMap.clear();
+      for (const k in cellCache) delete cellCache[k];
+
+      // Reset UI
+      highScoreDiv.innerText = `Highest Value: ${highestValue}`;
+      const pos = leaflet.latLng(latitude, longitude);
+      playerMarker.setLatLng(pos);
+      playerRangeCircle.setLatLng(pos);
+      map.setView(pos, GAMEPLAY_ZOOM_LEVEL);
+
+      saveGameState();
+    });
+  }
+
+  if (swapBtn) {
+    swapBtn.addEventListener("click", () => {
+      if (usingGeo) {
+        movementFacade.switchToButtons();
+        swapBtn.innerText = "Using Buttons";
+        // Show arrow controls when switching to button mode
+        arrowContainer.style.display = "block";
+        const up = document.getElementById("up") as HTMLButtonElement | null;
+        const down = document.getElementById("down") as
+          | HTMLButtonElement
+          | null;
+        const left = document.getElementById("left") as
+          | HTMLButtonElement
+          | null;
+        const right = document.getElementById("right") as
+          | HTMLButtonElement
+          | null;
+        if (up) up.disabled = false;
+        if (down) down.disabled = false;
+        if (left) left.disabled = false;
+        if (right) right.disabled = false;
+      } else {
+        movementFacade.switchToGeo();
+        swapBtn.innerText = "Using Geolocation";
+        // Hide arrow controls when switching to geolocation mode
+        arrowContainer.style.display = "none";
+        const up = document.getElementById("up") as HTMLButtonElement | null;
+        const down = document.getElementById("down") as
+          | HTMLButtonElement
+          | null;
+        const left = document.getElementById("left") as
+          | HTMLButtonElement
+          | null;
+        const right = document.getElementById("right") as
+          | HTMLButtonElement
+          | null;
+        if (up) up.disabled = true;
+        if (down) down.disabled = true;
+        if (left) left.disabled = true;
+        if (right) right.disabled = true;
+      }
+      usingGeo = !usingGeo;
+    });
+  }
+}
 
 // Cell cache/data
 const cellCache: Record<string, number> = {};
