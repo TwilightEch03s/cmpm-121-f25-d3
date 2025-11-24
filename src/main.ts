@@ -291,6 +291,7 @@ function movePlayerByDirection() {
   saveGameState();
 }
 
+// Move the player to specific lat/lng
 function movePlayer(lat: number, lng: number) {
   latitude = lat;
   longitude = lng;
@@ -339,7 +340,7 @@ directions.forEach((dir) => {
   arrowContainer.appendChild(btn);
 });
 
-// Initialize movement controllers (buttons + geolocation) and wire to movePlayer
+// Initialize movement controllers buttons and geolocation
 const upBtn = document.getElementById("up");
 const downBtn = document.getElementById("down");
 const leftBtn = document.getElementById("left");
@@ -354,7 +355,7 @@ const buttonCtrl = new ButtonMovementController(
 const geoCtrl = new GeolocationMovementController();
 const movementFacade = new MovementFacade(geoCtrl, buttonCtrl);
 
-// Wire movement events to update the player
+// Update movement on position change
 movementFacade.onMove((lat, lng) => movePlayer(lat, lng));
 movementFacade.start();
 
@@ -414,6 +415,7 @@ if (rightBtn) (rightBtn as HTMLButtonElement).disabled = usingGeo;
       if (usingGeo) {
         movementFacade.switchToButtons();
         swapBtn.innerText = "Using Buttons";
+
         // Show arrow controls when switching to button mode
         arrowContainer.style.display = "block";
         const up = document.getElementById("up") as HTMLButtonElement | null;
@@ -433,6 +435,7 @@ if (rightBtn) (rightBtn as HTMLButtonElement).disabled = usingGeo;
       } else {
         movementFacade.switchToGeo();
         swapBtn.innerText = "Using Geolocation";
+
         // Hide arrow controls when switching to geolocation mode
         arrowContainer.style.display = "none";
         const up = document.getElementById("up") as HTMLButtonElement | null;
@@ -688,10 +691,9 @@ class ModifiedCells {
 }
 
 const modifiedCells = new ModifiedCells();
-
-// Save/load minimal game state to localStorage
 const GAME_STATE_KEY = "cmpm121-game-v1";
 
+// Save game to localStorage
 function saveGameState() {
   try {
     const state = {
@@ -715,6 +717,7 @@ function saveGameState() {
   }
 }
 
+// Load game from localStorage
 function loadGameState() {
   try {
     const raw = localStorage.getItem(GAME_STATE_KEY);

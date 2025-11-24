@@ -1,14 +1,18 @@
+/* Panel above the map for controls */
 #controlPanel {
   padding: 1rem;
 }
 
+/* Main Leaflet map area */
 #map {
   width: 100%;
   height: 80vh;
 }
 
+/* Shared styles for High Score and Status panels */
 #highScorePanel, #statusPanel {
   position: absolute;
+  top: 10px;
   left: 10px;
   padding: 10px 15px;
   border-radius: 8px;
@@ -19,16 +23,19 @@
   z-index: 1000;
 }
 
+/* High Score panel */
 #highScorePanel {
-  bottom: 70px;
+  margin-top: 30px;
   font-size: 16px;
 }
 
+/* Status panel — sits under High Score panel */
 #statusPanel {
-  bottom: 30px;
+  margin-top: 70px; /* push lower */
   font-size: 14px;
 }
 
+/* Arrow movement buttons (mobile controls) */
 #arrowControls {
   position: absolute;
   right: 10px;
@@ -40,6 +47,7 @@
   z-index: 1000;
 }
 
+/* Styling for each arrow button */
 #arrowControls button {
   width: 50px;
   height: 50px;
@@ -52,16 +60,20 @@
   cursor: pointer;
 }
 
+/* Hover effect for arrow buttons */
 #arrowControls button:hover {
   background-color: rgba(0, 0, 255, 1);
 }
 
+/* New Game / Switch Movement buttons */
 #highScoreControls {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   margin-left: 8px;
+  margin-top: 10px;
 }
 
+/* General style for top buttons */
 #highScoreControls button {
   padding: 8px 14px;
   font-size: 14px;
@@ -77,16 +89,19 @@
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
+/* Hover effect */
 #highScoreControls button:hover {
   background: linear-gradient(180deg, #6aa2ff, #1a6aff);
 }
 
+/* Disabled buttons */
 #highScoreControls button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   background: #555;
 }
 
+/* Button press effect */
 #highScoreControls button:active {
   transform: scale(0.97);
 }

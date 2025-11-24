@@ -46,4 +46,4 @@ Key gameplay challenge: Can players collect and craft tokens from nearby locatio
 - [x] add buton to start new game
 - [x] add buton that switches between buttons and geolocation
 - [x] make it work on mobile
-- [ ] clean and refactor
+- [x] clean and refactor
